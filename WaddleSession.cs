@@ -17,7 +17,7 @@ public sealed class WaddleSession
     private TcpClient _client;
     private NetworkStream _stream;
     private Guid _guid;
-    private bool _connected;
+    private bool _connected = false;
 
     public WaddleSession(TcpClient client, WaddleWsServer server)
     {
@@ -74,6 +74,7 @@ public sealed class WaddleSession
                 _connected = true;
                 isConnecting = false;
                 OnHandshakeCompleted?.Invoke(this);
+                continue;
             }
             else if (!_connected && !isConnecting)
             {
@@ -83,8 +84,8 @@ public sealed class WaddleSession
             bool fin = (bytes[0] & 0b10000000) != 0;
             bool mask = (bytes[1] & 0b10000000) != 0;
 
-            if (!mask)
-                throw new InvalidDataException($"`{nameof(mask).ToUpper()}` from the client MUST be set.");
+            // if (!mask)
+            //     throw new InvalidDataException($"`{nameof(mask).ToUpper()}` from the client MUST be set.");
 
             int opcode = (bytes[0] & 0b00001111);
 
@@ -182,18 +183,22 @@ public sealed class WaddleSession
         OnDisconnect?.Invoke(this);
     }
 
-    public void SendMessage(int opcode, ReadOnlySpan<byte> payload) => SendMessage(this._client, opcode, payload, false, Array.Empty<byte>());
-    private static void SendMessage(TcpClient client, int opcode, ReadOnlySpan<byte> payload, bool masking, ReadOnlySpan<byte> mask)
+    public void SendMessage(string payload) => SendMessage(0x01, Encoding.UTF8.GetBytes(payload));
+    public void SendMessage(int opcode, ReadOnlySpan<byte> payload) => SendMessage(this, opcode, payload, false, Array.Empty<byte>());
+    private static void SendMessage(WaddleSession session, int opcode, ReadOnlySpan<byte> payload, bool masking, ReadOnlySpan<byte> mask)
     {
+        if (!session._connected) return;
         if (masking && mask.Length is 0) throw new ArgumentNullException($"While {nameof(masking)} is set, {nameof(mask)} can NOT be empty.");
+        var client = session._client;
 
         using MemoryStream byteBuffer = new();
         byte[] headerBytes = new byte[2];
-        headerBytes[0] = 0b1000000; // fin
+        headerBytes[0] = 0b10000000; // fin
+        headerBytes[0] |= (byte)opcode;
 
         if (masking)
         {
-            headerBytes[1] |= 0b1000000; // mask
+            headerBytes[1] |= 0b10000000; // mask
         }
         
         byte[]? payloadLen  = null;

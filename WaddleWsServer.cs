@@ -56,9 +56,11 @@ public sealed class WaddleWsServer
 
     private void AwaitClientConnection(object? state)
     {
+        _server.Start();
         while (_listening)
         {
             WaddleSession session = new(_server.AcceptTcpClient(), this);
+            ClientConnected?.Invoke(this, session);
             clients.Add(session.GetGuid(), session);
             session.Start();
 
@@ -66,8 +68,6 @@ public sealed class WaddleWsServer
                 clients.Remove(session.GetGuid());
                 ClientDisconnected?.Invoke(this, session);
             };
-
-            ClientConnected?.Invoke(this, session);
         }
 
         foreach (var client in clients)
