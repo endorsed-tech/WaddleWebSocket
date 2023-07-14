@@ -149,16 +149,18 @@ public sealed class WaddleSession
 
             if (!fin) continue;
 
+            var buffer = messageBuffer.GetBuffer()[0..(int)payloadLen];
+
             switch (opcode)
             {
                 case 0x01:
-                    OnRecievedMessage?.Invoke(this, messageBuffer.GetBuffer());
-                    OnRecievedTextMessage?.Invoke(this, new String(Encoding.UTF8.GetString(messageBuffer.GetBuffer())));
+                    OnRecievedMessage?.Invoke(this, buffer);
+                    OnRecievedTextMessage?.Invoke(this, new String(Encoding.UTF8.GetString(buffer)));
                     break;
 
                 case 0x02:
-                    OnRecievedMessage?.Invoke(this, messageBuffer.GetBuffer());
-                    OnRecievedBinaryMessage?.Invoke(this, messageBuffer.GetBuffer());
+                    OnRecievedMessage?.Invoke(this, buffer);
+                    OnRecievedBinaryMessage?.Invoke(this, buffer);
                     break;
 
                 case 0x08:
@@ -168,6 +170,8 @@ public sealed class WaddleSession
                 default:
                     throw new InvalidOperationException($"Invalid opcode `0x{opcode:X2}`");
             }
+
+            messageBuffer.SetLength(0);
         }
     }
 
@@ -208,22 +212,21 @@ public sealed class WaddleSession
         }
         else if (payload.Length <= ushort.MaxValue)
         {
-            headerBytes[1] |= 0b01111110;
+            headerBytes[1] |= 0b01111110; // 126
 
             payloadLen = new byte[2];
             var len = BitConverter.GetBytes(payload.Length);
-            len.Reverse();
-            payloadLen[0] = len[0];
-            payloadLen[1] = len[1];
+            payloadLen[0] = len[1];
+            payloadLen[1] = len[0];
         }
         else
         {
-            headerBytes[1] |= 0b01111111;
+            headerBytes[1] |= 0b01111111; // 127
 
             payloadLen = new byte[8];
             var len = BitConverter.GetBytes(payload.Length);
             len.Reverse();
-            Buffer.BlockCopy(len, 0, payloadLen, 0, 8);
+            Buffer.BlockCopy(len, 0, payloadLen, 0, len.Length);
         }
 
         byteBuffer.Write(headerBytes.AsSpan());
@@ -240,6 +243,7 @@ public sealed class WaddleSession
 
         byteBuffer.Write(payload);
         
+        byteBuffer.Flush();
         client.GetStream().Write(byteBuffer.GetBuffer());
     }
 
